@@ -9,13 +9,13 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
   headless: true, args: ['--no-sandbox'],
 });
-const now = Math.floor(Date.now() / 300000) * 300000;
+const now = Math.floor(Date.now() / 900000) * 900000;
 const errors = [];
 const data = result => ({ retCode: 0, retMsg: 'OK', result, time: now });
 const instrument = symbol => ({ symbol, contractType: 'LinearPerpetual', quoteCoin: 'USDT', status: 'Trading' });
-const rows = Array.from({ length: 100 }, (_, i) => [String(now - (100 - i) * 300000), '100', '101', '99', '100', '10', '1000']);
-rows[85] = [rows[85][0], '100', '104', '99', '103', '40', '4000'];
-for (let i = 86; i < 100; i++) rows[i] = [rows[i][0], '103', '103.5', '101.5', '102', '3', '300'];
+const rows = Array.from({ length: 100 }, (_, i) => [String(now - (100 - i) * 900000), '100', '101', '99', '100', '10', '1000']);
+rows[94] = [rows[94][0], '100', '104', '99', '103', '40', '4000'];
+for (let i = 95; i < 100; i++) rows[i] = [rows[i][0], '103', '103.5', '101.5', '102', '3', '300'];
 let klineCalls = 0;
 let failing = false;
 const context = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
@@ -28,6 +28,7 @@ await context.route('https://api.bybit.com/**', async route => {
   if (url.pathname.endsWith('/instruments-info')) response = data({ list: [instrument('BTCUSDT'), instrument('ETHUSDT')], nextPageCursor: '' });
   if (url.pathname.endsWith('/tickers')) response = data({ list: ['BTCUSDT', 'ETHUSDT'].map(symbol => ({ symbol, turnover24h: '20000000', lastPrice: '102' })) });
   if (url.pathname.endsWith('/kline')) {
+    assert.equal(url.searchParams.get('interval'), '15', 'API requests 15-minute candles');
     klineCalls++;
     if (failing && url.searchParams.get('symbol') === 'ETHUSDT') {
       await route.fulfill({ status: 200, json: { retCode: 10001, retMsg: 'Fixture failure', result: {}, time: now } }); return;
@@ -66,7 +67,7 @@ try {
   await page.getByRole('button', { name: '전체', exact: true }).click();
   await page.locator('.wave-card').first().click();
   await page.getByRole('dialog').waitFor();
-  assert.equal(await page.getByRole('img', { name: /확정 5분봉/ }).count(), 1);
+  assert.equal(await page.getByRole('img', { name: /확정 15분봉/ }).count(), 1);
   await page.getByRole('button', { name: '이전 캔들', exact: true }).click();
   assert.equal(await page.getByRole('button', { name: '다음 캔들', exact: true }).isEnabled(), true);
   await page.getByRole('button', { name: '상세 닫기', exact: true }).click();
@@ -80,7 +81,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.result-caption')?.textContent.includes('1시간') && !document.querySelector('.progress'));
   await page.reload();
   await page.waitForFunction(() => document.querySelector('.result-caption')?.textContent.includes('1시간') && !document.querySelector('.progress'));
-  assert.equal(await page.locator('.wave-card').count(), 0, '75-minute-old signals must be excluded from the one-hour range');
+  assert.equal(await page.locator('.wave-card').count(), 0, '90-minute-old signals must be excluded from the one-hour range');
   assert.equal(await page.getByRole('button', { name: '1시간', exact: true }).getAttribute('aria-pressed'), 'true', 'saved settings');
   failing = true;
   await page.getByRole('button', { name: /^3시간/ }).click();

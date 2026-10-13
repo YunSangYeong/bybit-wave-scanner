@@ -1,4 +1,4 @@
-export const INTERVAL = 5 * 60 * 1000;
+export const INTERVAL = 15 * 60 * 1000;
 export interface Candle {
   time: number;
   open: number;

@@ -50,7 +50,7 @@ describe('historical 1-wave detection', () => {
   });
   it('groups continuation signals and separates signals after structure breaks', () => {
     const c = withSignal();
-    c.push({ time: asOf(c), open: 103, close: 105, high: 106, low: 103, turnover: 8000 });
+    c.push({ time: asOf(c), open: 103, close: 105.1, high: 106, low: 103, turnover: 8000 });
     let waves = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c));
     expect(waves).toHaveLength(1); expect(waves[0].confirmations).toBe(2);
     c.push({ time: asOf(c), open: 105, close: 100, high: 105, low: 98, turnover: 1000 });
@@ -64,7 +64,7 @@ describe('historical 1-wave detection', () => {
   });
   it('honors the search range by signal close time', () => {
     const c = withSignal();
-    for (let i = 0; i < 13; i++) c.push({ ...c[0], time: asOf(c), open: 103, close: 103, high: 104, low: 102 });
+    for (let i = 0; i < 5; i++) c.push({ ...c[0], time: asOf(c), open: 103, close: 103, high: 104, low: 102 });
     expect(detectWaves('TESTUSDT', c, { ...DEFAULT_SETTINGS, hours: 1 }, asOf(c))).toHaveLength(0);
     expect(detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))).toHaveLength(1);
   });
@@ -140,7 +140,7 @@ describe('short waves', () => {
   });
   it('groups short continuation and starts a new wave after the start high breaks', () => {
     const long = withSignal();
-    long.push({ time: asOf(long), open: 103, close: 105, high: 106, low: 103, turnover: 8000 });
+    long.push({ time: asOf(long), open: 103, close: 105.1, high: 106, low: 103, turnover: 8000 });
     let c = mirror(long); let waves = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c));
     expect(waves).toHaveLength(1); expect(waves[0].confirmations).toBe(2);
     long.push({ time: asOf(long), open: 105, close: 100, high: 105, low: 98, turnover: 1000 });
@@ -171,8 +171,25 @@ describe('short waves', () => {
     const c = withSignal();
     for (let i = 0; i < 22; i++) c.push({ time: asOf(c), open: 103, close: 103, high: 104, low: 102, turnover: 1000 });
     c.push({ time: asOf(c), open: 103, close: 99, high: 103, low: 98, turnover: 4000 });
-    const waves = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c));
+    const waves = detectWaves('TESTUSDT', c, { ...DEFAULT_SETTINGS, hours: 6 }, asOf(c));
     expect(waves.map(w => w.direction)).toEqual(['long', 'short']);
     expect(new Set(waves.map(w => w.id)).size).toBe(2);
+  });
+});
+
+describe('15-minute timeframe with unchanged time-based conditions', () => {
+  it.each(['long', 'short'] as const)('uses one 15m bar, not a 45m change, for %s signals', direction => {
+    let c = withSignal();
+    c[23] = { ...c[23], close: 102, high: 102 };
+    if (direction === 'short') c = mirror(c);
+    // The 45m change is 3%, but the actual 15m change is below 2%.
+    expect(detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))).toHaveLength(0);
+  });
+  it('keeps the hourly comparison at four 15m bars, not twelve bars', () => {
+    const c = withSignal();
+    c[20] = { ...c[20], close: 125, high: 126 };
+    c[24] = { ...c[24], close: 140, high: 141 };
+    const [w] = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c));
+    expect(w.hourRise).toBe(12); expect(w.overheated).toBe(false);
   });
 });

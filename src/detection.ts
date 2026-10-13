@@ -57,7 +57,7 @@ function detectDirection(symbol: string, candles: Candle[], settings: Settings, 
     if (prior.some((bar, j) => candles[i - 20 + j + 1].time - bar.time !== INTERVAL)) continue;
     const baseline = mean(prior.map(bar => bar.turnover));
     if (baseline <= 0) continue;
-    const rise = change(c.close, candles[i - 3].close);
+    const rise = change(c.close, candles[i - 1].close);
     const rvol = c.turnover / baseline;
     const boundary = direction === 'long' ? Math.max(...prior.map(bar => bar.high)) : Math.min(...prior.map(bar => bar.low));
     if (sign * rise < settings.minRise || rvol < settings.minRvol || sign * (c.close - boundary) <= 0) continue;
@@ -65,7 +65,7 @@ function detectDirection(symbol: string, candles: Candle[], settings: Settings, 
     const starts = candles.slice(i - 2, i + 1).map(bar => adverse(bar, direction));
     const startPrice = direction === 'long' ? Math.min(...starts) : Math.max(...starts);
     const startIndex = i - 2 + starts.indexOf(startPrice);
-    const hourRise = change(c.close, candles[i - 12].close);
+    const hourRise = change(c.close, candles[i - 4].close);
     const overheated = sign * hourRise > 12;
     const score = Math.round(Math.min(40, sign * rise / settings.minRise * 20) + Math.min(40, rvol / settings.minRvol * 20) + (overheated ? 0 : 20));
     active = { id: `${symbol}-${direction}-${c.time}`, direction, symbol, signalTime: c.time + INTERVAL, signalIndex: i,

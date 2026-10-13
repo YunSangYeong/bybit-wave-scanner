@@ -15,7 +15,7 @@ function Detail({ wave, asOf, onClose }: { wave: Wave; asOf: number; onClose: ()
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { ref.current?.showModal(); }, []);
   return <dialog ref={ref} className="detail" onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="detail-top"><div><span className="eyebrow">WAVE ANALYSIS / 5 MIN</span><h2>{wave.symbol.replace(/USDT$/, '')}<small> / USDT</small></h2></div><button className="close" onClick={onClose} aria-label="상세 닫기">×</button></div>
+    <div className="detail-top"><div><span className="eyebrow">WAVE ANALYSIS / 15 MIN</span><h2>{wave.symbol.replace(/USDT$/, '')}<small> / USDT</small></h2></div><button className="close" onClick={onClose} aria-label="상세 닫기">×</button></div>
     <div className="detail-sub"><span className={`direction-badge ${wave.direction}`}>{isLong ? '롱 · 상승' : '숏 · 하락'}</span><span className={`badge ${statusClass[wave.status]}`}>{wave.status}</span><span>{formatTime(wave.signalTime)} 1파 확정 · KST</span></div>
     <Chart wave={wave} />
     <dl className="detail-metrics">
@@ -66,14 +66,14 @@ export default function App() {
   return <>
     <header className="topbar"><div className="topbar-inner"><a className="brand" href={import.meta.env.BASE_URL} aria-label="WAVE 홈"><svg width="32" height="26" viewBox="0 0 32 26" fill="none" aria-hidden="true"><path d="m1 18 7-9 6 10L23 3l8 9" stroke="#49d6b0" strokeWidth="3" strokeLinejoin="round" /></svg> WAVE<span>SCANNER</span></a><span className="market-label"><i />BYBIT · PUBLIC</span></div></header>
     <main>
-      <section className="hero"><div><span className="eyebrow">FIRST WAVE, CLEAR SIGNAL.</span><h1>시장의 첫 파동을<br /><em>포착하세요.</em></h1><p>거래대금이 터진 상승·하락 1파부터<br className="mobile-break" /> 거래량이 줄어든 눌림목까지.</p></div><div className="hero-stamp"><span>5m</span><small>확정봉 기반<br />USDT 무기한 선물</small></div></section>
+      <section className="hero"><div><span className="eyebrow">FIRST WAVE, CLEAR SIGNAL.</span><h1>시장의 첫 파동을<br /><em>포착하세요.</em></h1><p>거래대금이 터진 상승·하락 1파부터<br className="mobile-break" /> 거래량이 줄어든 눌림목까지.</p></div><div className="hero-stamp"><span>15m</span><small>확정봉 기반<br />USDT 무기한 선물</small></div></section>
       <section className="stats" aria-label="검색 요약">
         <div><span>탐색 대상</span><strong>{busy && progress.total ? progress.total : result?.eligible ?? '—'}<small> 종목</small></strong><p>유동성 필터 적용{result ? ` / 전체 ${result.universe}` : ''}</p></div>
         <div><span>1파 발견</span><strong className="mint">{result ? foundSymbols : '—'}<small> 종목</small></strong><p>{result ? `${result.waves.length}개 파동` : '검색 완료 후 표시'}</p></div>
         <div className="last-scan"><span>마지막 검색 완료</span><strong>{result ? formatTime(result.finishedAt) : '—'}</strong><p>KST · {result ? `최근 ${result.settings.hours}시간` : '자동 검색 대기'}</p></div>
       </section>
       <section className="control-panel">
-        <div className="control-heading"><div><span className="section-kicker">SCAN CONFIGURATION</span><h2>검색 설정</h2></div><span className="subtle">닫힌 5분봉만 검사</span></div>
+        <div className="control-heading"><div><span className="section-kicker">SCAN CONFIGURATION</span><h2>검색 설정</h2></div><span className="subtle">닫힌 15분봉만 검사</span></div>
         <form onSubmit={event => { event.preventDefault(); void run(settings); }}>
           <fieldset disabled={busy}><legend>과거 검색 범위</legend><div className="range-options">{([1, 3, 6] as const).map(hours => <button key={hours} type="button" className={settings.hours === hours ? 'active' : ''} aria-pressed={settings.hours === hours} onClick={() => update({ hours })}>{hours}시간{hours === 3 && <span>기본</span>}</button>)}</div></fieldset>
           <details className="thresholds"><summary>탐지 기준 조정 <span>거래대금 · 상승률 · RVOL</span></summary><div className="setting-fields">

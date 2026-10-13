@@ -17,8 +17,8 @@ export function Chart({ wave }: { wave: Wave }) {
   const bar = bars[selected];
   return <div className="chart-block">
     <div className="chart-legend"><span className="legend-start">{isLong ? '시작 저점' : '시작 고점'}</span><span className="legend-signal">1파 확정</span><span className="legend-peak">{isLong ? '최고점' : '최저점'}</span><span className="legend-correction">조정 구간</span></div>
-    <div className="chart-scroll" tabIndex={0} aria-label="5분봉 차트. 좌우로 스크롤할 수 있습니다.">
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: W }} role="img" aria-label={`${wave.symbol} 확정 5분봉 가격 및 USDT 거래대금 차트`}
+    <div className="chart-scroll" tabIndex={0} aria-label="15분봉 차트. 좌우로 스크롤할 수 있습니다.">
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: W }} role="img" aria-label={`${wave.symbol} 확정 15분봉 가격 및 USDT 거래대금 차트`}
         onPointerDown={event => {
           const box = event.currentTarget.getBoundingClientRect();
           setSelected(Math.max(0, Math.min(bars.length - 1, Math.floor(((event.clientX - box.left) * W / box.width - left) / step))));

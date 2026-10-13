@@ -46,12 +46,12 @@ describe('Bybit client', () => {
     await new BybitClient(new AbortController().signal, fetcher, 0).candles('AAAUSDT', 6, 1_800_000_000_000);
     const url = new URL(fetcher.mock.calls[0][0]);
     expect(Number(url.searchParams.get('start'))).toBe(1_800_000_000_000 - 6 * 3_600_000 - 21 * INTERVAL);
-    expect(url.searchParams.get('interval')).toBe('5');
+    expect(url.searchParams.get('interval')).toBe('15');
   });
 });
 describe('candle validation', () => {
   it('parses USDT turnover rather than coin volume and sorts oldest first', () => {
-    const rows = [['1800000300000', '100', '104', '99', '103', '20', '2030'], ['1800000000000', '100', '101', '99', '100', '10', '1000']];
+    const rows = [['1800000900000', '100', '104', '99', '103', '20', '2030'], ['1800000000000', '100', '101', '99', '100', '10', '1000']];
     const c = parseCandles(rows); expect(c[0].time).toBe(1_800_000_000_000); expect(c[1].turnover).toBe(2030);
   });
   it('rejects malformed or duplicate price history', () => {

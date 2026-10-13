@@ -111,11 +111,11 @@ export class BybitClient {
   }
 
   async candles(symbol: string, hours: number, asOf: number): Promise<Candle[]> {
-    // 20 baseline candles + the entire range, up to 93 bars for 6h; within the 1000 limit.
+    // 20 baseline candles + the entire range, up to 45 bars for 6h; within the 1000 limit.
     const first = Math.ceil((asOf - hours * 3_600_000) / INTERVAL) * INTERVAL - INTERVAL;
     const start = first - 20 * INTERVAL;
     const data = await this.request<{ list: string[][]; symbol: string }>('/v5/market/kline', {
-      category: 'linear', symbol, interval: '5', start: String(start), end: String(asOf), limit: '1000',
+      category: 'linear', symbol, interval: '15', start: String(start), end: String(asOf), limit: '1000',
     });
     if (data.result?.symbol !== symbol || !Array.isArray(data.result.list)) throw new ApiError('캔들 응답의 종목 또는 형식이 올바르지 않습니다.');
     return parseCandles(data.result.list);

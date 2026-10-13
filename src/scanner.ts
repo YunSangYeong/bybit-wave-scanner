@@ -24,7 +24,7 @@ export async function scanMarket(settings: Settings, signal: AbortSignal,
   const waves: Wave[] = [];
   let cursor = 0;
   let completed = 0;
-  progress({ stage: '확정 5분봉 검색', done: 0, total: eligible.length });
+  progress({ stage: '확정 15분봉 검색', done: 0, total: eligible.length });
   const worker = async () => {
     while (cursor < eligible.length) {
       if (signal.aborted) throw new DOMException('검색 취소', 'AbortError');
@@ -43,7 +43,7 @@ export async function scanMarket(settings: Settings, signal: AbortSignal,
         failures.push({ symbol, reason: errorMessage(error) });
       }
       completed++;
-      progress({ stage: '확정 5분봉 검색', done: completed, total: eligible.length });
+      progress({ stage: '확정 15분봉 검색', done: completed, total: eligible.length });
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, eligible.length) }, worker));

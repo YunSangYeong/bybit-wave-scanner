@@ -5,8 +5,8 @@ import { DEFAULT_SETTINGS, INTERVAL, type Candle } from './types';
 const now = 1_800_000_000_000;
 const instrument = (symbol: string) => ({ symbol, contractType: 'LinearPerpetual', quoteCoin: 'USDT', status: 'Trading' });
 function fixture(): Candle[] {
-  const bars = Array.from({ length: 58 }, (_, i) => ({ time: now - (58 - i) * INTERVAL, open: 100, high: 101, low: 99, close: 100, turnover: 1000 }));
-  bars[40] = { ...bars[40], close: 103, high: 104, turnover: 4000 };
+  const bars = Array.from({ length: 34 }, (_, i) => ({ time: now - (34 - i) * INTERVAL, open: 100, high: 101, low: 99, close: 100, turnover: 1000 }));
+  bars[26] = { ...bars[26], close: 103, high: 104, turnover: 4000 };
   return bars;
 }
 function client() {
