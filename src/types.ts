@@ -14,22 +14,24 @@ export interface Settings {
   minRvol: number;
 }
 export const DEFAULT_SETTINGS: Settings = { hours: 3, minTurnover: 10_000_000, minRise: 2, minRvol: 3 };
-export type WaveStatus = '1파 발견' | '눌림 진행' | '거줄음 확인' | '반등 관찰' | '구조 무효';
+export type Direction = 'long' | 'short';
+export type WaveStatus = '1파 발견' | '눌림 진행' | '거줄음 확인' | '반등 관찰' | '되돌림 진행' | '하락 재개 관찰' | '구조 무효';
 export interface Wave {
   id: string;
+  direction: Direction;
   symbol: string;
   signalTime: number;
   signalIndex: number;
   startIndex: number;
-  startLow: number;
+  startPrice: number;
   rise: number;
   rvol: number;
   hourRise: number;
   overheated: boolean;
   confirmations: number;
   score: number;
-  peak: number;
-  peakIndex: number;
+  extreme: number;
+  extremeIndex: number;
   pullback: number;
   waveTurnover: number;
   correctionTurnover: number | null;

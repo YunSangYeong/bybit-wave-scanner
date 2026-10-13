@@ -32,7 +32,8 @@ await context.route('https://api.bybit.com/**', async route => {
     if (failing && url.searchParams.get('symbol') === 'ETHUSDT') {
       await route.fulfill({ status: 200, json: { retCode: 10001, retMsg: 'Fixture failure', result: {}, time: now } }); return;
     }
-    response = data({ symbol: url.searchParams.get('symbol'), list: rows.toReversed() });
+    const prices = url.searchParams.get('symbol') === 'ETHUSDT' ? rows.map(row => [row[0], String(200 - Number(row[1])), String(200 - Number(row[3])), String(200 - Number(row[2])), String(200 - Number(row[4])), row[5], row[6]]) : rows;
+    response = data({ symbol: url.searchParams.get('symbol'), list: prices.toReversed() });
   }
   await route.fulfill({ status: 200, json: response });
 });
@@ -44,6 +45,22 @@ try {
   assert.equal(klineCalls, 2, 'automatic search');
   assert.equal(await page.locator('.wave-card .quiet').count(), 2);
   await noOverflow();
+  await page.getByRole('button', { name: '롱', exact: true }).click();
+  assert.equal(await page.locator('.wave-card').count(), 1);
+  assert.match(await page.locator('.wave-card').innerText(), /BTC/);
+  await page.getByRole('button', { name: '숏', exact: true }).click();
+  assert.equal(await page.locator('.wave-card').count(), 1);
+  assert.match(await page.locator('.wave-card').innerText(), /ETH/);
+  assert.match(await page.locator('.wave-card').innerText(), /-3\.00%/);
+  assert.match(await page.locator('.wave-card').innerText(), /현재 되돌림률/);
+  await page.locator('.wave-card').click();
+  await page.getByRole('dialog').waitFor();
+  await page.getByText('1파 시작 고점', { exact: true }).waitFor();
+  await page.getByText('1파 최저가', { exact: true }).waitFor();
+  await page.getByText('최저가 대비 되돌림률', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '상세 닫기', exact: true }).click();
+  await page.getByRole('button', { name: '전체 방향', exact: true }).click();
+  assert.equal(klineCalls, 2, 'direction filters do not redownload candles');
   await page.getByRole('button', { name: '구조 무효', exact: true }).click();
   await page.getByText('이 상태의 파동이 없습니다', { exact: true }).waitFor();
   await page.getByRole('button', { name: '전체', exact: true }).click();
@@ -79,7 +96,7 @@ try {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.screenshot({ path: 'test-results/mobile-fixture.png', fullPage: true });
   assert.deepEqual(errors, [], 'browser runtime errors');
-  console.log('PASS: mobile 360/375px and desktop layout, automatic search, detail chart, candle controls, filters, settings persistence, refresh, partial results. Synthetic fixtures only.');
+  console.log('PASS: mobile 360/375px and desktop layout, automatic two-direction search, long/short filters and short chart labels, candle controls, settings persistence, refresh, partial results. Synthetic fixtures only.');
 
   // A separate page performs an unmocked browser request to inspect actual Bybit/CORS access.
   const live = await browser.newContext({ viewport: { width: 375, height: 812 } });

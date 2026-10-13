@@ -21,7 +21,7 @@ describe('historical 1-wave detection', () => {
     expect(w.rise).toBeCloseTo(3);
     expect(w.rvol).toBe(4);
     expect(w.signalTime).toBe(asOf(c));
-    expect(w.startLow).toBe(99);
+    expect(w.startPrice).toBe(99);
     expect(w.status).toBe('1파 발견');
   });
   it('does not detect an unclosed candle even if it meets every condition', () => {
@@ -46,7 +46,7 @@ describe('historical 1-wave detection', () => {
     c.push({ ...c[24], time: asOf(c), high: 106, open: 103, close: 105, low: 102, turnover: 90_000 });
     const later = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))[0];
     expect([later.signalTime, later.rise, later.rvol, later.hourRise, later.score]).toEqual([first.signalTime, first.rise, first.rvol, first.hourRise, first.score]);
-    expect(later.peak).toBe(106);
+    expect(later.extreme).toBe(106);
   });
   it('groups continuation signals and separates signals after structure breaks', () => {
     const c = withSignal();
@@ -93,5 +93,86 @@ describe('pullback states', () => {
     expect(analyzeWave(w, c).status).toBe('눌림 진행');
     c.push({ time: asOf(c), open: 102, close: 99, high: 102, low: 98, turnover: 100 });
     expect(analyzeWave(w, c).status).toBe('구조 무효');
+  });
+});
+
+// Reflect prices around 100: every long pattern becomes the corresponding short pattern.
+const mirror = (candles: Candle[]): Candle[] => candles.map(c => ({ ...c,
+  open: 200 - c.open, high: 200 - c.low, low: 200 - c.high, close: 200 - c.close }));
+
+describe('short waves', () => {
+  it('detects a 15m decline and prior-low breakdown with the same RVOL and score', () => {
+    const long = withSignal(); const c = mirror(long);
+    const [w] = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c));
+    expect(w.direction).toBe('short'); expect(w.rise).toBe(-3); expect(w.hourRise).toBe(-3);
+    expect(w.startPrice).toBe(101); expect(w.extreme).toBe(96); expect(w.rvol).toBe(4);
+    expect(w.score).toBe(detectWaves('TESTUSDT', long, DEFAULT_SETTINGS, asOf(long))[0].score);
+    expect(w.status).toBe('1파 발견');
+    expect(w.id).toContain('-short-');
+  });
+  it.each(['rise', 'turnover', 'breakout'] as const)('rejects a failed short %s condition', condition => {
+    const c = mirror(withSignal());
+    if (condition === 'rise') c[24].close = 98.5;
+    if (condition === 'turnover') c[24].turnover = 2999;
+    if (condition === 'breakout') c[23].low = 96;
+    expect(detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))).toHaveLength(0);
+  });
+  it('accepts exactly -2% and 3x, rejects an open signal candle and missing baseline', () => {
+    const c = mirror(withSignal()); c[24].close = 98; c[24].turnover = 3000;
+    expect(detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))).toHaveLength(1);
+    expect(detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c) - 1)).toHaveLength(0);
+    c.splice(10, 1);
+    expect(detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))).toHaveLength(0);
+  });
+  it('preserves short detection metrics when future lows arrive', () => {
+    const c = mirror(withSignal()); const first = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))[0];
+    c.push({ time: asOf(c), open: 97, close: 95, low: 94, high: 98, turnover: 500 });
+    const later = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))[0];
+    expect([later.signalTime, later.rise, later.rvol, later.hourRise, later.score]).toEqual([first.signalTime, first.rise, first.rvol, first.hourRise, first.score]);
+    expect(later.extreme).toBe(94);
+  });
+  it('marks a >12% hourly decline as overheated, but not exactly 12%', () => {
+    const c = mirror(withSignal()); c[24].close = 88; c[24].low = 87;
+    expect(detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))[0].overheated).toBe(false);
+    c[24].close = 87.99;
+    const w = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))[0];
+    expect(w.overheated).toBe(true); expect(w.score).toBeLessThanOrEqual(80);
+  });
+  it('groups short continuation and starts a new wave after the start high breaks', () => {
+    const long = withSignal();
+    long.push({ time: asOf(long), open: 103, close: 105, high: 106, low: 103, turnover: 8000 });
+    let c = mirror(long); let waves = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c));
+    expect(waves).toHaveLength(1); expect(waves[0].confirmations).toBe(2);
+    long.push({ time: asOf(long), open: 105, close: 100, high: 105, low: 98, turnover: 1000 });
+    long.push({ time: asOf(long), open: 100, close: 108, high: 109, low: 100, turnover: 10000 });
+    c = mirror(long); waves = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c));
+    expect(waves).toHaveLength(2); expect(waves[0].status).toBe('구조 무효');
+    expect(waves.every(w => w.direction === 'short')).toBe(true);
+  });
+  it('confirms reduced turnover in bullish corrections, then observes bearish continuation', () => {
+    const c = mirror(withSignal()); const w = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))[0];
+    c.push({ time: asOf(c), open: 97, close: 98, high: 98.5, low: 96.5, turnover: 300 });
+    const quiet = analyzeWave(w, c);
+    expect(quiet.status).toBe('거줄음 확인'); expect(quiet.turnoverRatio).toBeCloseTo(0.15);
+    expect(quiet.pullback).toBeCloseTo((98 / 96 - 1) * 100);
+    c.push({ time: asOf(c), open: 98, close: 96.2, high: 98, low: 96.1, turnover: 400 });
+    expect(analyzeWave(w, c).status).toBe('하락 재개 관찰');
+    c.push({ time: asOf(c), open: 97, close: 100, high: 101.1, low: 97, turnover: 300 });
+    expect(analyzeWave(w, c).status).toBe('구조 무효');
+  });
+  it('uses short pullback status for high turnover, and exact start-high contact stays valid', () => {
+    const c = mirror(withSignal()); const w = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c))[0];
+    c.push({ time: asOf(c), open: 97, close: 98, low: 97, high: 101, turnover: 4000 });
+    expect(analyzeWave(w, c).status).toBe('되돌림 진행');
+    c.push({ time: asOf(c), open: 100, close: 97, high: 101.01, low: 96.5, turnover: 100 });
+    expect(analyzeWave(w, c).status).toBe('구조 무효');
+  });
+  it('can find both directions on one symbol without merging opposite waves', () => {
+    const c = withSignal();
+    for (let i = 0; i < 22; i++) c.push({ time: asOf(c), open: 103, close: 103, high: 104, low: 102, turnover: 1000 });
+    c.push({ time: asOf(c), open: 103, close: 99, high: 103, low: 98, turnover: 4000 });
+    const waves = detectWaves('TESTUSDT', c, DEFAULT_SETTINGS, asOf(c));
+    expect(waves.map(w => w.direction)).toEqual(['long', 'short']);
+    expect(new Set(waves.map(w => w.id)).size).toBe(2);
   });
 });
