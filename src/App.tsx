@@ -57,7 +57,11 @@ export default function App() {
   }, []);
   useEffect(() => { void run(initialSettings.current); return () => controller.current?.abort(); }, [run]);
   const update = (change: Partial<Settings>) => { const next = { ...settings, ...change }; setSettings(next); if (validSettings(next)) saveSettings(next); };
-  const waves = (result?.waves || []).filter(w => (filter === '전체' || w.status === filter) && (direction === 'all' || w.direction === direction))
+  const allWaves = result?.waves || [];
+  const directionWaves = allWaves.filter(w => direction === 'all' || w.direction === direction);
+  const directionCount = (value: Direction | 'all') => result ? allWaves.filter(w => value === 'all' || w.direction === value).length : '—';
+  const statusCount = (status: string) => result ? directionWaves.filter(w => status === '전체' || w.status === status).length : '—';
+  const waves = directionWaves.filter(w => filter === '전체' || w.status === filter)
     .slice().sort((a, b) => sort === 'score' ? b.score - a.score || b.signalTime - a.signalTime : b.signalTime - a.signalTime || b.score - a.score);
   const foundSymbols = new Set(result?.waves.map(w => w.symbol)).size;
   const percentDone = progress.total ? Math.round(progress.done / progress.total * 100) : 0;
@@ -88,8 +92,8 @@ export default function App() {
       {error && <div className="alert" role="alert"><strong>검색을 완료하지 못했습니다.</strong><p>{error}</p><p>가짜 데이터나 캐시 신호를 대신 표시하지 않습니다. 연결 상태를 확인한 뒤 새로고침하세요.{result && ' 아래 목록은 이전 검색 결과입니다.'}</p></div>}
       {result?.failures.length ? <div className="alert partial" role="status"><strong>부분 검색 결과 · 조회 실패 {result.failures.length}종목</strong><details><summary>실패 원인 보기</summary><ul>{result.failures.map(f => <li key={f.symbol}><b>{f.symbol}</b> {f.reason}</li>)}</ul></details></div> : null}
       <section className="results" aria-label="1파 탐지 결과"><div className="results-heading"><div><span className="section-kicker">DETECTED WAVES</span><h2>발견한 파동 <span>{result ? result.waves.length : '—'}</span></h2></div><label className="sort-label">정렬<select value={sort} onChange={e => setSort(e.target.value)}><option value="latest">최신순</option><option value="score">점수순</option></select></label></div>
-        <div className="direction-filter" role="group" aria-label="방향 필터">{([['all', '전체 방향'], ['long', '롱'], ['short', '숏']] as const).map(([value, label]) => <button type="button" key={value} className={direction === value ? `selected ${value}` : ''} aria-pressed={direction === value} onClick={() => { setDirection(value); setFilter('전체'); }}>{label}</button>)}<span>같은 데이터로 양방향 검색</span></div>
-        <div className="filters" role="group" aria-label="상태 필터">{['전체', ...statuses].map(status => <button key={status} className={filter === status ? 'selected' : ''} aria-pressed={filter === status} onClick={() => setFilter(status)}>{status}</button>)}</div>
+        <div className="direction-filter" role="group" aria-label="방향 필터">{([['all', '전체 방향'], ['long', '롱'], ['short', '숏']] as const).map(([value, label]) => <button type="button" key={value} className={direction === value ? `selected ${value}` : ''} aria-pressed={direction === value} onClick={() => { setDirection(value); setFilter('전체'); }}>{label}({directionCount(value)})</button>)}<span>같은 데이터로 양방향 검색</span></div>
+        <div className="filters" role="group" aria-label="상태 필터">{['전체', ...statuses].map(status => <button key={status} className={filter === status ? 'selected' : ''} aria-pressed={filter === status} onClick={() => setFilter(status)}>{status}({statusCount(status)})</button>)}</div>
         {result && <p className="result-caption">{busy || error ? '이전 검색 결과 · ' : ''}{formatTime(result.marketTime)} KST 기준 · {result.settings.hours}시간 · {money(result.settings.minTurnover)} USDT · ±{result.settings.minRise}% · {result.settings.minRvol}×{changed && ' · 설정 변경 후 새로고침 필요'}</p>}
         {waves.length ? <div className="wave-list">{waves.map((wave, index) => <button className="wave-card" key={wave.id} onClick={() => setSelected(wave)}>
           <div className="card-top"><div className="coin"><span className="coin-icon">{wave.symbol[0]}</span><div><h3>{wave.symbol.replace(/USDT$/, '')}<small>USDT</small><span className={`direction-badge ${wave.direction}`}>{wave.direction === 'long' ? '롱' : '숏'}</span></h3><p>{formatTime(wave.signalTime)} KST · 1파 확정</p></div></div><span className={`badge ${statusClass[wave.status]}`}>{wave.status}</span></div>
