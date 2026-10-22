@@ -1,3 +1,5 @@
+import type { MarketFilter } from './market';
+
 export const INTERVAL = 15 * 60 * 1000;
 export interface Candle {
   time: number;
@@ -8,12 +10,13 @@ export interface Candle {
   turnover: number;
 }
 export interface Settings {
+  market: MarketFilter;
   hours: 1 | 3 | 6;
   minTurnover: number;
   minRise: number;
   minRvol: number;
 }
-export const DEFAULT_SETTINGS: Settings = { hours: 3, minTurnover: 10_000_000, minRise: 2, minRvol: 3 };
+export const DEFAULT_SETTINGS: Settings = { market: 'all', hours: 3, minTurnover: 10_000_000, minRise: 2, minRvol: 3 };
 export type Direction = 'long' | 'short';
 export type WaveStatus = '1파 발견' | '눌림 진행' | '거줄음 확인' | '반등 관찰' | '되돌림 진행' | '하락 재개 관찰' | '구조 무효';
 export interface Wave {

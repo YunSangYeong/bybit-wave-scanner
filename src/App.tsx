@@ -1,23 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Chart } from './Chart';
-import { errorMessage } from './api';
+import { closedCandles } from './detection';
+import { MARKET_LABELS } from './market';
+import { BybitClient, errorMessage } from './api';
 import { formatTime, money, percent, price } from './format';
 import { scanMarket } from './scanner';
 import { loadSettings, saveSettings, validSettings } from './settings';
-import { type Direction, type Progress, type ScanResult, type Settings, type Wave, type WaveStatus } from './types';
+import { type Candle, type Direction, type Progress, type ScanResult, type Settings, type Wave, type WaveStatus } from './types';
 
 const statusClass: Record<WaveStatus, string> = { '1파 발견': 'found', '눌림 진행': 'pulling', '거줄음 확인': 'quiet', '반등 관찰': 'rebound', '구조 무효': 'invalid', '되돌림 진행': 'pulling', '하락 재개 관찰': 'rebound' };
 const statuses: WaveStatus[] = ['1파 발견', '눌림 진행', '되돌림 진행', '거줄음 확인', '반등 관찰', '하락 재개 관찰', '구조 무효'];
 function RefreshIcon() { return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M19 11a7 7 0 0 0-12-4L4 10m16 4-3 3a7 7 0 0 1-12-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 
 function Detail({ wave, asOf, onClose }: { wave: Wave; asOf: number; onClose: () => void }) {
+  const [emaHistory, setEmaHistory] = useState<Candle[] | null>(null);
+  const [emaError, setEmaError] = useState('');
   const isLong = wave.direction === 'long';
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { ref.current?.showModal(); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    setEmaHistory(null); setEmaError('');
+    void new BybitClient(controller.signal).emaCandles(wave.symbol, asOf)
+      .then(history => { if (!controller.signal.aborted) setEmaHistory(closedCandles(history, asOf)); })
+      .catch(error => { if (!controller.signal.aborted) setEmaError(errorMessage(error)); });
+    return () => controller.abort();
+  }, [wave.symbol, asOf]);
   return <dialog ref={ref} className="detail" onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="detail-top"><div><span className="eyebrow">WAVE ANALYSIS / 15 MIN</span><h2>{wave.symbol.replace(/USDT$/, '')}<small> / USDT</small></h2></div><button className="close" onClick={onClose} aria-label="상세 닫기">×</button></div>
     <div className="detail-sub"><span className={`direction-badge ${wave.direction}`}>{isLong ? '롱 · 상승' : '숏 · 하락'}</span><span className={`badge ${statusClass[wave.status]}`}>{wave.status}</span><span>{formatTime(wave.signalTime)} 1파 확정 · KST</span></div>
-    <Chart wave={wave} />
+    <Chart wave={wave} emaHistory={emaHistory} />
+    <p className="ema-note" role="status">{emaError ? `EMA 조회 실패: ${emaError}` : emaHistory === null ? 'EMA 계산용 과거 확정봉을 불러오는 중입니다.' : 'EMA50·EMA200은 15분봉 종가 기준입니다. EMA200은 EMA50의 두 배 굵기입니다.'}</p>
     <dl className="detail-metrics">
       <div><dt>1파 시작 {isLong ? '저점' : '고점'}</dt><dd>{price(wave.startPrice)} <small>USDT</small></dd></div>
       <div><dt>1파 {isLong ? '최고가' : '최저가'}</dt><dd>{price(wave.extreme)} <small>USDT</small></dd></div>
@@ -79,6 +92,8 @@ export default function App() {
       <section className="control-panel">
         <div className="control-heading"><div><span className="section-kicker">SCAN CONFIGURATION</span><h2>검색 설정</h2></div><span className="subtle">닫힌 15분봉만 검사</span></div>
         <form onSubmit={event => { event.preventDefault(); void run(settings); }}>
+          <fieldset disabled={busy}><legend>탐색 시장</legend><div className="range-options">{(['crypto', 'stock', 'all'] as const).map(market => <button key={market} type="button" className={settings.market === market ? 'active' : ''} aria-pressed={settings.market === market} onClick={() => update({ market })}>{MARKET_LABELS[market]}</button>)}</div></fieldset>
+          <p className="ema-note">주식만은 개별 주식 기반 선물입니다. ETF·원자재·외환은 전체에 포함됩니다.</p>
           <fieldset disabled={busy}><legend>과거 검색 범위</legend><div className="range-options">{([1, 3, 6] as const).map(hours => <button key={hours} type="button" className={settings.hours === hours ? 'active' : ''} aria-pressed={settings.hours === hours} onClick={() => update({ hours })}>{hours}시간{hours === 3 && <span>기본</span>}</button>)}</div></fieldset>
           <details className="thresholds"><summary>탐지 기준 조정 <span>거래대금 · 상승률 · RVOL</span></summary><div className="setting-fields">
             <label>최소 24h 거래대금<small>만 USDT</small><input type="number" min="0" max="100000000" step="1" required disabled={busy} value={Number.isFinite(settings.minTurnover) ? settings.minTurnover / 10000 : ''} onChange={e => update({ minTurnover: e.target.value === '' ? NaN : Number(e.target.value) * 10000 })} /></label>
@@ -94,7 +109,7 @@ export default function App() {
       <section className="results" aria-label="1파 탐지 결과"><div className="results-heading"><div><span className="section-kicker">DETECTED WAVES</span><h2>발견한 파동 <span>{result ? result.waves.length : '—'}</span></h2></div><label className="sort-label">정렬<select value={sort} onChange={e => setSort(e.target.value)}><option value="latest">최신순</option><option value="score">점수순</option></select></label></div>
         <div className="direction-filter" role="group" aria-label="방향 필터">{([['all', '전체 방향'], ['long', '롱'], ['short', '숏']] as const).map(([value, label]) => <button type="button" key={value} className={direction === value ? `selected ${value}` : ''} aria-pressed={direction === value} onClick={() => { setDirection(value); setFilter('전체'); }}>{label}({directionCount(value)})</button>)}<span>같은 데이터로 양방향 검색</span></div>
         <div className="filters" role="group" aria-label="상태 필터">{['전체', ...statuses].map(status => <button key={status} className={filter === status ? 'selected' : ''} aria-pressed={filter === status} onClick={() => setFilter(status)}>{status}({statusCount(status)})</button>)}</div>
-        {result && <p className="result-caption">{busy || error ? '이전 검색 결과 · ' : ''}{formatTime(result.marketTime)} KST 기준 · {result.settings.hours}시간 · {money(result.settings.minTurnover)} USDT · ±{result.settings.minRise}% · {result.settings.minRvol}×{changed && ' · 설정 변경 후 새로고침 필요'}</p>}
+        {result && <p className="result-caption">{busy || error ? '이전 검색 결과 · ' : ''}{formatTime(result.marketTime)} KST 기준 · {MARKET_LABELS[result.settings.market]} · {result.settings.hours}시간 · {money(result.settings.minTurnover)} USDT · ±{result.settings.minRise}% · {result.settings.minRvol}×{changed && ' · 설정 변경 후 새로고침 필요'}</p>}
         {waves.length ? <div className="wave-list">{waves.map((wave, index) => <button className="wave-card" key={wave.id} onClick={() => setSelected(wave)}>
           <div className="card-top"><div className="coin"><span className="coin-icon">{wave.symbol[0]}</span><div><h3>{wave.symbol.replace(/USDT$/, '')}<small>USDT</small><span className={`direction-badge ${wave.direction}`}>{wave.direction === 'long' ? '롱' : '숏'}</span></h3><p>{formatTime(wave.signalTime)} KST · 1파 확정</p></div></div><span className={`badge ${statusClass[wave.status]}`}>{wave.status}</span></div>
           <div className="card-metrics"><div><span>{wave.direction === 'long' ? '1파 상승률' : '1파 하락률'}</span><strong className={wave.direction === 'long' ? 'positive' : 'negative'}>{wave.rise > 0 ? '+' : ''}{percent(wave.rise)}</strong></div><div><span>상대 거래대금</span><strong>{wave.rvol.toFixed(2)}<small>×</small></strong></div><div><span>{wave.direction === 'long' ? '현재 조정률' : '현재 되돌림률'}</span><strong>{percent(wave.pullback)}</strong></div></div>

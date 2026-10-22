@@ -1,5 +1,6 @@
 import { BybitClient, errorMessage } from './api';
 import { closedCandles, detectWaves } from './detection';
+import { matchesMarket } from './market';
 import { INTERVAL, type Failure, type Progress, type ScanResult, type Settings, type Wave } from './types';
 
 export async function scanMarket(settings: Settings, signal: AbortSignal,
@@ -8,7 +9,7 @@ export async function scanMarket(settings: Settings, signal: AbortSignal,
   progress({ stage: '거래소 기준 시각 확인', done: 0, total: 0 });
   const marketTime = await client.serverTime();
   progress({ stage: '전체 종목 목록 조회', done: 0, total: 0 });
-  const instruments = await client.instruments();
+  const instruments = (await client.instruments()).filter(item => matchesMarket(item.symbolType, settings.market));
   progress({ stage: '24시간 유동성 확인', done: 0, total: 0 });
   const tickers = new Map((await client.tickers()).map(ticker => [ticker.symbol, ticker]));
   const failures: Failure[] = [];

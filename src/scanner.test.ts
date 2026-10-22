@@ -15,6 +15,16 @@ function client() {
     candles: vi.fn().mockResolvedValue(fixture()) };
 }
 describe('full market scan', () => {
+  it('filters the selected market before candle requests and counting scan targets', async () => {
+    const c = client();
+    c.instruments.mockResolvedValue([{ ...instrument('AAAUSDT'), symbolType: '' }, { ...instrument('BBBUSDT'), symbolType: 'stock' }, { ...instrument('SMALLUSDT'), symbolType: 'ETF' }]);
+    for (const market of ['crypto', 'stock'] as const) {
+      c.candles.mockClear();
+      const result = await scanMarket({ ...DEFAULT_SETTINGS, market }, new AbortController().signal, () => {}, c);
+      expect(result.universe).toBe(1); expect(result.eligible).toBe(1); expect(result.waves).toHaveLength(1);
+      expect(c.candles.mock.calls.map(args => args[0])).toEqual([market === 'crypto' ? 'AAAUSDT' : 'BBBUSDT']);
+    }
+  });
   it('applies the snapshot liquidity filter and verifies all eligible symbols', async () => {
     const c = client(); const progress = vi.fn();
     const result = await scanMarket(DEFAULT_SETTINGS, new AbortController().signal, progress, c);

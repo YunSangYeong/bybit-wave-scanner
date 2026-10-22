@@ -14,7 +14,7 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 interface Envelope<T> { retCode: number; retMsg: string; result: T; time: number }
-interface Instrument { symbol: string; contractType: string; quoteCoin: string; status: string }
+interface Instrument { symbol: string; contractType: string; quoteCoin: string; status: string; symbolType?: string }
 export interface Ticker { symbol: string; turnover24h: string; lastPrice: string }
 export const errorMessage = (error: unknown) => error instanceof Error ? error.message : '알 수 없는 조회 오류';
 
@@ -108,6 +108,15 @@ export class BybitClient {
     const data = await this.request<{ list: Ticker[] }>('/v5/market/tickers', { category: 'linear' });
     if (!Array.isArray(data.result?.list)) throw new ApiError('거래대금 목록 응답이 올바르지 않습니다.');
     return data.result.list;
+  }
+
+  async emaCandles(symbol: string, asOf: number): Promise<Candle[]> {
+    // Latest available bars rather than a fixed calendar range, including session-based stocks.
+    const data = await this.request<{ list: string[][]; symbol: string }>('/v5/market/kline', {
+      category: 'linear', symbol, interval: '15', end: String(asOf), limit: '1000',
+    });
+    if (data.result?.symbol !== symbol || !Array.isArray(data.result.list)) throw new ApiError('EMA 캔들 응답의 종목 또는 형식이 올바르지 않습니다.');
+    return parseCandles(data.result.list);
   }
 
   async candles(symbol: string, hours: number, asOf: number): Promise<Candle[]> {

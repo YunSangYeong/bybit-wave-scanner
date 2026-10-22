@@ -12,11 +12,13 @@ const browser = await chromium.launch({
 const now = Math.floor(Date.now() / 900000) * 900000;
 const errors = [];
 const data = result => ({ retCode: 0, retMsg: 'OK', result, time: now });
-const instrument = symbol => ({ symbol, contractType: 'LinearPerpetual', quoteCoin: 'USDT', status: 'Trading' });
+const instrument = symbol => ({ symbol, symbolType: symbol === 'BTCUSDT' ? '' : 'stock', contractType: 'LinearPerpetual', quoteCoin: 'USDT', status: 'Trading' });
 const rows = Array.from({ length: 100 }, (_, i) => [String(now - (100 - i) * 900000), '100', '101', '99', '100', '10', '1000']);
 rows[94] = [rows[94][0], '100', '104', '99', '103', '40', '4000'];
 for (let i = 95; i < 100; i++) rows[i] = [rows[i][0], '103', '103.5', '101.5', '102', '3', '300'];
 let klineCalls = 0;
+let emaCalls = 0;
+let historyMode = 'full';
 let failing = false;
 const context = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
 const page = await context.newPage();
@@ -25,15 +27,26 @@ await context.route('https://api.bybit.com/**', async route => {
   const url = new URL(route.request().url());
   let response;
   if (url.pathname.endsWith('/time')) response = data({ timeSecond: String(now / 1000) });
-  if (url.pathname.endsWith('/instruments-info')) response = data({ list: [instrument('BTCUSDT'), instrument('ETHUSDT')], nextPageCursor: '' });
-  if (url.pathname.endsWith('/tickers')) response = data({ list: ['BTCUSDT', 'ETHUSDT'].map(symbol => ({ symbol, turnover24h: '20000000', lastPrice: '102' })) });
+  if (url.pathname.endsWith('/instruments-info')) response = data({ list: [instrument('BTCUSDT'), instrument('SKHYUSDT')], nextPageCursor: '' });
+  if (url.pathname.endsWith('/tickers')) response = data({ list: ['BTCUSDT', 'SKHYUSDT'].map(symbol => ({ symbol, turnover24h: '20000000', lastPrice: '102' })) });
   if (url.pathname.endsWith('/kline')) {
     assert.equal(url.searchParams.get('interval'), '15', 'API requests 15-minute candles');
-    klineCalls++;
-    if (failing && url.searchParams.get('symbol') === 'ETHUSDT') {
+    const isHistory = !url.searchParams.has('start');
+    const start = isHistory ? now - 999 * 900000 : Number(url.searchParams.get('start'));
+    if (isHistory) emaCalls++; else klineCalls++;
+    if (isHistory && historyMode === 'fail') {
+      await route.fulfill({ status: 200, json: { retCode: 10001, retMsg: 'EMA fixture failure', result: {}, time: now } }); return;
+    }
+    if (failing && url.searchParams.get('symbol') === 'SKHYUSDT') {
       await route.fulfill({ status: 200, json: { retCode: 10001, retMsg: 'Fixture failure', result: {}, time: now } }); return;
     }
-    const prices = url.searchParams.get('symbol') === 'ETHUSDT' ? rows.map(row => [row[0], String(200 - Number(row[1])), String(200 - Number(row[3])), String(200 - Number(row[2])), String(200 - Number(row[4])), row[5], row[6]]) : rows;
+    const overrides = new Map(rows.map(row => [Number(row[0]), row]));
+    const candles = isHistory && historyMode === 'full' ? Array.from({ length: (now - start) / 900000 }, (_, i) => {
+      const time = start + i * 900000;
+      return overrides.get(time) || [String(time), '100', '101', '99', '100', '10', '1000'];
+    }) : rows.filter(row => Number(row[0]) >= start);
+    const prices = url.searchParams.get('symbol') === 'SKHYUSDT' ? candles.map(row => [row[0], String(200 - Number(row[1])), String(200 - Number(row[3])), String(200 - Number(row[2])), String(200 - Number(row[4])), row[5], row[6]]) : candles;
+    if (isHistory) prices.push([String(now), '100', '1000000', '99', '1000000', '10', '1000']);
     response = data({ symbol: url.searchParams.get('symbol'), list: prices.toReversed() });
   }
   await route.fulfill({ status: 200, json: response });
@@ -58,7 +71,7 @@ try {
   await page.getByRole('button', { name: '숏(1)', exact: true }).waitFor();
   await page.getByRole('button', { name: /^숏\(/ }).click();
   assert.equal(await page.locator('.wave-card').count(), 1);
-  assert.match(await page.locator('.wave-card').innerText(), /ETH/);
+  assert.match(await page.locator('.wave-card').innerText(), /SKHY/);
   assert.match(await page.locator('.wave-card').innerText(), /-3\.00%/);
   assert.match(await page.locator('.wave-card').innerText(), /현재 되돌림률/);
   await page.locator('.wave-card').click();
@@ -66,7 +79,22 @@ try {
   await page.getByText('1파 시작 고점', { exact: true }).waitFor();
   await page.getByText('1파 최저가', { exact: true }).waitFor();
   await page.getByText('최저가 대비 되돌림률', { exact: true }).waitFor();
+  await page.waitForFunction(() => (document.querySelector('path[aria-label="EMA200"]')?.getAttribute('d') || '').includes('L'));
+  assert.equal(await page.locator('path[aria-label="EMA50"]').getAttribute('stroke-width'), '2');
+  assert.equal(await page.locator('path[aria-label="EMA200"]').getAttribute('stroke-width'), '4');
+  assert.match(await page.locator('.candle-inspector').innerText(), /EMA200 99/);
+  assert.equal(emaCalls, 1, 'EMA history is fetched only when opening a detail');
   await page.getByRole('button', { name: '상세 닫기', exact: true }).click();
+  historyMode = 'short';
+  await page.locator('.wave-card').click();
+  await page.getByText('EMA200: 데이터 부족(200개 확정봉 필요).', { exact: false }).waitFor();
+  assert.equal((await page.locator('path[aria-label="EMA200"]').getAttribute('d')).trim(), '');
+  await page.getByRole('button', { name: '상세 닫기', exact: true }).click();
+  historyMode = 'fail';
+  await page.locator('.wave-card').click();
+  await page.getByText(/EMA 조회 실패:.*EMA fixture failure/).waitFor();
+  await page.getByRole('button', { name: '상세 닫기', exact: true }).click();
+  historyMode = 'full';
   await page.getByRole('button', { name: /^전체 방향\(/ }).click();
   assert.equal(klineCalls, 2, 'direction filters do not redownload candles');
   await page.getByRole('button', { name: /^구조 무효\(/ }).click();
@@ -106,13 +134,33 @@ try {
   await page.getByText('실패 원인 보기', { exact: true }).click();
   await page.getByText(/Fixture failure/).waitFor();
   await noOverflow();
+  failing = false;
+  await page.getByRole('button', { name: '주식만', exact: true }).click();
+  await page.getByRole('button', { name: '새로고침', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.result-caption')?.textContent.includes('주식만') && !document.querySelector('.progress'));
+  assert.equal(await page.locator('.wave-card').count(), 1);
+  assert.match(await page.locator('.wave-card').innerText(), /SKHY/);
+  await page.getByRole('button', { name: '롱(0)', exact: true }).waitFor();
+  await page.getByRole('button', { name: '코인만', exact: true }).click();
+  await page.getByRole('button', { name: '새로고침', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.result-caption')?.textContent.includes('코인만') && !document.querySelector('.progress'));
+  assert.equal(await page.locator('.wave-card').count(), 1);
+  assert.match(await page.locator('.wave-card').innerText(), /BTC/);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('.result-caption')?.textContent.includes('코인만') && !document.querySelector('.progress'));
+  assert.equal(await page.getByRole('button', { name: '코인만', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.wave-card').count(), 1);
+  await page.getByRole('button', { name: '전체', exact: true }).click();
+  await page.getByRole('button', { name: '새로고침', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.wave-card').length === 2 && !document.querySelector('.progress'));
+  await noOverflow();
   await page.setViewportSize({ width: 1024, height: 900 }); await noOverflow();
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/desktop-fixture.png', fullPage: true });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.screenshot({ path: 'test-results/mobile-fixture.png', fullPage: true });
   assert.deepEqual(errors, [], 'browser runtime errors');
-  console.log('PASS: mobile 360/375px and desktop layout, automatic two-direction search, long/short filters and short chart labels, candle controls, settings persistence, refresh, partial results. Synthetic fixtures only.');
+  console.log('PASS: mobile 360/375px and desktop layout, official market filters, EMA50/200 curves and 2x stroke, insufficient/failed EMA history, automatic two-direction search, long/short filters and short chart labels, candle controls, settings persistence, refresh, partial results. Synthetic fixtures only.');
 
   // A separate page performs an unmocked browser request to inspect actual Bybit/CORS access.
   const live = await browser.newContext({ viewport: { width: 375, height: 812 } });

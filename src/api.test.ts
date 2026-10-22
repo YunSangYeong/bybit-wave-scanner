@@ -48,6 +48,14 @@ describe('Bybit client', () => {
     expect(Number(url.searchParams.get('start'))).toBe(1_800_000_000_000 - 6 * 3_600_000 - 21 * INTERVAL);
     expect(url.searchParams.get('interval')).toBe('15');
   });
+  it('loads extended EMA warm-up only when the detail view requests it', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({ symbol: 'AAAUSDT', list: [] }));
+    await new BybitClient(new AbortController().signal, fetcher, 0).emaCandles('AAAUSDT', 1_800_000_000_000);
+    const url = new URL(fetcher.mock.calls[0][0]);
+    expect(url.searchParams.has('start')).toBe(false);
+    expect(Number(url.searchParams.get('end'))).toBe(1_800_000_000_000);
+    expect(url.searchParams.get('limit')).toBe('1000');
+  });
 });
 describe('candle validation', () => {
   it('parses USDT turnover rather than coin volume and sorts oldest first', () => {
