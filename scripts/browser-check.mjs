@@ -60,6 +60,11 @@ try {
   await page.locator('.wave-result').first().scrollIntoViewIfNeeded();
   await page.waitForFunction(() => [...document.querySelectorAll('.wave-result path[aria-label="EMA200"]')].some(p => p.getAttribute('d')?.includes('L')));
   assert.equal(await page.getByRole('dialog').count(), 0, 'chart automatically appears without opening detail');
+  const firstChart = page.locator('.wave-result').first().getByRole('img');
+  assert.equal(await firstChart.getAttribute('data-candle-count'), '100');
+  assert.equal(await firstChart.locator('g[data-candle-time]').count(), 100);
+  assert.equal(await firstChart.evaluate(el => el.getBoundingClientRect().width <= el.parentElement.clientWidth), true, '100 candles fit the mobile chart viewport');
+
   assert.match(await page.locator('.wave-result').first().getByRole('img').getAttribute('aria-label'), /BTCUSDT/);
 
   assert.equal(await page.locator('.wave-card .quiet').count(), 2);
