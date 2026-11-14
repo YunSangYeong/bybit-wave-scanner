@@ -18,7 +18,7 @@ export function Chart({ wave, emaHistory }: { wave: Wave; emaHistory: Candle[] |
   const bars = useMemo(() => {
     const merged = new Map((emaHistory || []).map(c => [c.time, c]));
     wave.candles.forEach(c => merged.set(c.time, c));
-    return [...merged.values()].sort((a, b) => a.time - b.time).slice(-100);
+    return [...merged.values()].sort((a, b) => a.time - b.time).slice(-50);
   }, [emaHistory, wave.candles]);
   const markerIndex = (index: number) => bars.findIndex(c => c.time === wave.candles[index]?.time);
   const startIndex = markerIndex(wave.startIndex);
@@ -54,8 +54,8 @@ export function Chart({ wave, emaHistory }: { wave: Wave; emaHistory: Candle[] |
   };
   return <div className="chart-block">
     <div className="chart-legend"><span className="legend-start">{isLong ? '시작 저점' : '시작 고점'}</span><span className="legend-signal">1파 확정</span><span className="legend-peak">{isLong ? '최고점' : '최저점'}</span><span className="legend-correction">조정 구간</span><span className="legend-ema50">EMA50</span><span className="legend-ema200">EMA200</span></div>
-    <p className="ema-note chart-count">최근 {bars.length}개 확정봉{bars.length < 100 ? " · 100개 미만: 과거 데이터 조회 중이거나 제공된 봉이 부족합니다." : " · 100개 봉 전체 표시"}</p>
-    <div ref={host} className="chart-scroll" aria-label="최근 100개 15분봉 차트">
+    <p className="ema-note chart-count">최근 {bars.length}개 확정봉{bars.length < 50 ? " · 50개 미만: 과거 데이터 조회 중이거나 제공된 봉이 부족합니다." : " · 50개 봉 전체 표시"}</p>
+    <div ref={host} className="chart-scroll" aria-label="최근 50개 15분봉 차트">
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%' }} data-candle-count={bars.length} role="img" aria-label={`${wave.symbol} 확정 15분봉 가격 및 USDT 거래대금 차트`}
         onPointerDown={event => {
           const box = event.currentTarget.getBoundingClientRect();
