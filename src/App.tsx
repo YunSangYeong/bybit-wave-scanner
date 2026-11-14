@@ -1,36 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Chart } from './Chart';
-import { closedCandles } from './detection';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChartHistory, ResultChart } from './ResultChart';
 import { MARKET_LABELS } from './market';
-import { BybitClient, errorMessage } from './api';
+import { errorMessage } from './api';
 import { formatTime, money, percent, price } from './format';
 import { scanMarket } from './scanner';
 import { loadSettings, saveSettings, validSettings } from './settings';
-import { type Candle, type Direction, type Progress, type ScanResult, type Settings, type Wave, type WaveStatus } from './types';
+import { type Direction, type Progress, type ScanResult, type Settings, type Wave, type WaveStatus } from './types';
 
 const statusClass: Record<WaveStatus, string> = { '1파 발견': 'found', '눌림 진행': 'pulling', '거줄음 확인': 'quiet', '반등 관찰': 'rebound', '구조 무효': 'invalid', '되돌림 진행': 'pulling', '하락 재개 관찰': 'rebound' };
 const statuses: WaveStatus[] = ['1파 발견', '눌림 진행', '되돌림 진행', '거줄음 확인', '반등 관찰', '하락 재개 관찰', '구조 무효'];
 function RefreshIcon() { return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M19 11a7 7 0 0 0-12-4L4 10m16 4-3 3a7 7 0 0 1-12-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 
-function Detail({ wave, asOf, onClose }: { wave: Wave; asOf: number; onClose: () => void }) {
-  const [emaHistory, setEmaHistory] = useState<Candle[] | null>(null);
-  const [emaError, setEmaError] = useState('');
+function Detail({ wave, asOf, history, onClose }: { wave: Wave; asOf: number; history: ChartHistory; onClose: () => void }) {
   const isLong = wave.direction === 'long';
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { ref.current?.showModal(); }, []);
-  useEffect(() => {
-    const controller = new AbortController();
-    setEmaHistory(null); setEmaError('');
-    void new BybitClient(controller.signal).emaCandles(wave.symbol, asOf)
-      .then(history => { if (!controller.signal.aborted) setEmaHistory(closedCandles(history, asOf)); })
-      .catch(error => { if (!controller.signal.aborted) setEmaError(errorMessage(error)); });
-    return () => controller.abort();
-  }, [wave.symbol, asOf]);
   return <dialog ref={ref} className="detail" onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="detail-top"><div><span className="eyebrow">WAVE ANALYSIS / 15 MIN</span><h2>{wave.symbol.replace(/USDT$/, '')}<small> / USDT</small></h2></div><button className="close" onClick={onClose} aria-label="상세 닫기">×</button></div>
     <div className="detail-sub"><span className={`direction-badge ${wave.direction}`}>{isLong ? '롱 · 상승' : '숏 · 하락'}</span><span className={`badge ${statusClass[wave.status]}`}>{wave.status}</span><span>{formatTime(wave.signalTime)} 1파 확정 · KST</span></div>
-    <Chart wave={wave} emaHistory={emaHistory} />
-    <p className="ema-note" role="status">{emaError ? `EMA 조회 실패: ${emaError}` : emaHistory === null ? 'EMA 계산용 과거 확정봉을 불러오는 중입니다.' : 'EMA50·EMA200은 15분봉 종가 기준입니다. EMA200은 EMA50의 두 배 굵기입니다.'}</p>
+    <ResultChart wave={wave} history={history} immediate />
     <dl className="detail-metrics">
       <div><dt>1파 시작 {isLong ? '저점' : '고점'}</dt><dd>{price(wave.startPrice)} <small>USDT</small></dd></div>
       <div><dt>1파 {isLong ? '최고가' : '최저가'}</dt><dd>{price(wave.extreme)} <small>USDT</small></dd></div>
@@ -70,6 +58,8 @@ export default function App() {
   }, []);
   useEffect(() => { void run(initialSettings.current); return () => controller.current?.abort(); }, [run]);
   const update = (change: Partial<Settings>) => { const next = { ...settings, ...change }; setSettings(next); if (validSettings(next)) saveSettings(next); };
+  const history = useMemo(() => new ChartHistory(result?.marketTime ?? 0), [result]);
+  useEffect(() => () => history.dispose(), [history]);
   const allWaves = result?.waves || [];
   const directionWaves = allWaves.filter(w => direction === 'all' || w.direction === direction);
   const directionCount = (value: Direction | 'all') => result ? allWaves.filter(w => value === 'all' || w.direction === value).length : '—';
@@ -110,15 +100,15 @@ export default function App() {
         <div className="direction-filter" role="group" aria-label="방향 필터">{([['all', '전체 방향'], ['long', '롱'], ['short', '숏']] as const).map(([value, label]) => <button type="button" key={value} className={direction === value ? `selected ${value}` : ''} aria-pressed={direction === value} onClick={() => { setDirection(value); setFilter('전체'); }}>{label}({directionCount(value)})</button>)}<span>같은 데이터로 양방향 검색</span></div>
         <div className="filters" role="group" aria-label="상태 필터">{['전체', ...statuses].map(status => <button key={status} className={filter === status ? 'selected' : ''} aria-pressed={filter === status} onClick={() => setFilter(status)}>{status}({statusCount(status)})</button>)}</div>
         {result && <p className="result-caption">{busy || error ? '이전 검색 결과 · ' : ''}{formatTime(result.marketTime)} KST 기준 · {MARKET_LABELS[result.settings.market]} · {result.settings.hours}시간 · {money(result.settings.minTurnover)} USDT · ±{result.settings.minRise}% · {result.settings.minRvol}×{changed && ' · 설정 변경 후 새로고침 필요'}</p>}
-        {waves.length ? <div className="wave-list">{waves.map((wave, index) => <button className="wave-card" key={wave.id} onClick={() => setSelected(wave)}>
+        {waves.length ? <div className="wave-list">{waves.map((wave, index) => <article className="wave-result" key={wave.id}><button className="wave-card" onClick={() => setSelected(wave)}>
           <div className="card-top"><div className="coin"><span className="coin-icon">{wave.symbol[0]}</span><div><h3>{wave.symbol.replace(/USDT$/, '')}<small>USDT</small><span className={`direction-badge ${wave.direction}`}>{wave.direction === 'long' ? '롱' : '숏'}</span></h3><p>{formatTime(wave.signalTime)} KST · 1파 확정</p></div></div><span className={`badge ${statusClass[wave.status]}`}>{wave.status}</span></div>
           <div className="card-metrics"><div><span>{wave.direction === 'long' ? '1파 상승률' : '1파 하락률'}</span><strong className={wave.direction === 'long' ? 'positive' : 'negative'}>{wave.rise > 0 ? '+' : ''}{percent(wave.rise)}</strong></div><div><span>상대 거래대금</span><strong>{wave.rvol.toFixed(2)}<small>×</small></strong></div><div><span>{wave.direction === 'long' ? '현재 조정률' : '현재 되돌림률'}</span><strong>{percent(wave.pullback)}</strong></div></div>
-          <div className="card-bottom"><div className="score"><span>탐지 점수</span><meter min="0" max="100" value={wave.score} /><strong>{wave.score}<small>/100</small></strong></div><span className="card-link">{wave.overheated ? <span className="hot">과열 · </span> : null}상세 차트 ↗</span></div><span className="sr-only">{index + 1}번째 결과 상세 보기</span>
-        </button>)}</div> : <div className="empty"><div className="empty-symbol">⌁</div><h3>{busy ? '시장의 파동을 살펴보고 있어요' : !result ? '실제 시장 데이터 연결을 기다립니다' : result.failures.length ? '조회에 성공한 종목에서 신호가 없습니다' : filter !== '전체' || direction !== 'all' ? '이 상태의 파동이 없습니다' : '조건에 맞는 1파가 없습니다'}</h3><p>{busy ? '전체 종목을 확인하고 과거 확정봉을 차례로 검사합니다.' : !result ? '연결에 성공하면 최근 3시간의 신호를 자동으로 검색합니다.' : '검색 범위나 탐지 기준을 조정해 다시 살펴보세요.'}</p></div>}
+          <div className="card-bottom"><div className="score"><span>탐지 점수</span><meter min="0" max="100" value={wave.score} /><strong>{wave.score}<small>/100</small></strong></div><span className="card-link">{wave.overheated ? <span className="hot">과열 · </span> : null}상세 분석 ↗</span></div><span className="sr-only">{index + 1}번째 결과 상세 보기</span>
+        </button><ResultChart wave={wave} history={history} /></article>)}</div> : <div className="empty"><div className="empty-symbol">⌁</div><h3>{busy ? '시장의 파동을 살펴보고 있어요' : !result ? '실제 시장 데이터 연결을 기다립니다' : result.failures.length ? '조회에 성공한 종목에서 신호가 없습니다' : filter !== '전체' || direction !== 'all' ? '이 상태의 파동이 없습니다' : '조건에 맞는 1파가 없습니다'}</h3><p>{busy ? '전체 종목을 확인하고 과거 확정봉을 차례로 검사합니다.' : !result ? '연결에 성공하면 최근 3시간의 신호를 자동으로 검색합니다.' : '검색 범위나 탐지 기준을 조정해 다시 살펴보세요.'}</p></div>}
       </section>
       <aside className="method-note"><span>i</span><div><strong>탐지 결과는 차트 검토를 위한 후보입니다.</strong><p>웹페이지가 열려 있을 때만 검색합니다. 닫힌 동안 실시간 탐지는 진행되지 않으며, 다시 열면 과거 봉을 조회합니다. 현재 가격은 검색 기준 시점의 최근 확정 종가이며 실시간 시세가 아닙니다.</p><p>24h 유동성은 검색 시점의 스냅샷입니다. 과거 신호의 가격·거래대금 조건에는 미래 봉을 사용하지 않습니다. RVOL은 코인 수량이 아닌 USDT 거래대금 배수입니다.</p></div></aside>
       <footer><span>WAVE SCANNER <b>v1.1</b></span><span>Bybit V5 Public API · KST</span></footer>
     </main>
-    {selected && result && <Detail wave={selected} asOf={result.marketTime} onClose={() => setSelected(null)} />}
+    {selected && result && <Detail wave={selected} asOf={result.marketTime} history={history} onClose={() => setSelected(null)} />}
   </>;
 }

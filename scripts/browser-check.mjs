@@ -57,6 +57,11 @@ try {
   await page.getByRole('button', { name: '새로고침', exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll('.wave-card').length === 2);
   assert.equal(klineCalls, 2, 'automatic search');
+  await page.locator('.wave-result').first().scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => [...document.querySelectorAll('.wave-result path[aria-label="EMA200"]')].some(p => p.getAttribute('d')?.includes('L')));
+  assert.equal(await page.getByRole('dialog').count(), 0, 'chart automatically appears without opening detail');
+  assert.match(await page.locator('.wave-result').first().getByRole('img').getAttribute('aria-label'), /BTCUSDT/);
+
   assert.equal(await page.locator('.wave-card .quiet').count(), 2);
   await noOverflow();
   await page.getByRole('button', { name: '롱(1)', exact: true }).waitFor();
@@ -79,22 +84,18 @@ try {
   await page.getByText('1파 시작 고점', { exact: true }).waitFor();
   await page.getByText('1파 최저가', { exact: true }).waitFor();
   await page.getByText('최저가 대비 되돌림률', { exact: true }).waitFor();
-  await page.waitForFunction(() => (document.querySelector('path[aria-label="EMA200"]')?.getAttribute('d') || '').includes('L'));
-  assert.equal(await page.locator('path[aria-label="EMA50"]').getAttribute('stroke-width'), '2');
-  assert.equal(await page.locator('path[aria-label="EMA200"]').getAttribute('stroke-width'), '4');
-  assert.match(await page.locator('.candle-inspector').innerText(), /EMA200 99/);
-  assert.equal(emaCalls, 1, 'EMA history is fetched only when opening a detail');
+  const detail = page.getByRole('dialog');
+  await detail.locator('path[aria-label="EMA200"]').waitFor();
+  await page.waitForFunction(() => (document.querySelector('dialog path[aria-label="EMA200"]')?.getAttribute('d') || '').includes('L'));
+  assert.equal(await detail.locator('path[aria-label="EMA50"]').getAttribute('stroke-width'), '2');
+  assert.equal(await detail.locator('path[aria-label="EMA200"]').getAttribute('stroke-width'), '4');
+  assert.match(await detail.locator('.candle-inspector').innerText(), /EMA200 99/);
+  const beforeReopen = emaCalls;
   await page.getByRole('button', { name: '상세 닫기', exact: true }).click();
-  historyMode = 'short';
   await page.locator('.wave-card').click();
-  await page.getByText('EMA200: 데이터 부족(200개 확정봉 필요).', { exact: false }).waitFor();
-  assert.equal((await page.locator('path[aria-label="EMA200"]').getAttribute('d')).trim(), '');
+  await page.getByRole('dialog').waitFor();
+  assert.equal(emaCalls, beforeReopen, 'detail reuses inline EMA history');
   await page.getByRole('button', { name: '상세 닫기', exact: true }).click();
-  historyMode = 'fail';
-  await page.locator('.wave-card').click();
-  await page.getByText(/EMA 조회 실패:.*EMA fixture failure/).waitFor();
-  await page.getByRole('button', { name: '상세 닫기', exact: true }).click();
-  historyMode = 'full';
   await page.getByRole('button', { name: /^전체 방향\(/ }).click();
   assert.equal(klineCalls, 2, 'direction filters do not redownload candles');
   await page.getByRole('button', { name: /^구조 무효\(/ }).click();
@@ -104,9 +105,9 @@ try {
   await page.getByRole('button', { name: /^전체\(/ }).click();
   await page.locator('.wave-card').first().click();
   await page.getByRole('dialog').waitFor();
-  assert.equal(await page.getByRole('img', { name: /확정 15분봉/ }).count(), 1);
-  await page.getByRole('button', { name: '이전 캔들', exact: true }).click();
-  assert.equal(await page.getByRole('button', { name: '다음 캔들', exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole('dialog').getByRole('img', { name: /확정 15분봉/ }).count(), 1);
+  await page.getByRole('dialog').getByRole('button', { name: '이전 캔들', exact: true }).click();
+  assert.equal(await page.getByRole('dialog').getByRole('button', { name: '다음 캔들', exact: true }).isEnabled(), true);
   await page.getByRole('button', { name: '상세 닫기', exact: true }).click();
   assert.equal(await page.getByRole('dialog').count(), 0);
   await page.setViewportSize({ width: 360, height: 780 }); await noOverflow();
@@ -154,13 +155,29 @@ try {
   await page.getByRole('button', { name: '새로고침', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('.wave-card').length === 2 && !document.querySelector('.progress'));
   await noOverflow();
+  for (const mode of ['short', 'fail']) {
+    historyMode = mode;
+    await page.getByRole('button', { name: '새로고침', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('.progress'));
+    await page.locator('.wave-result').first().scrollIntoViewIfNeeded();
+    if (mode === 'short') await page.getByText('EMA200: 데이터 부족(200개 확정봉 필요).', { exact: false }).first().waitFor();
+    else await page.getByText(/EMA 조회 실패:.*EMA fixture failure/).first().waitFor();
+    assert.equal(await page.locator('.wave-result').first().getByRole('img').count(), 1, 'price chart survives EMA failure/short history');
+  }
+  historyMode = 'full';
+  await page.getByRole('button', { name: '새로고침', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('.progress'));
+  for (const card of await page.locator('.wave-result').all()) {
+    await card.scrollIntoViewIfNeeded();
+    await card.locator('path[aria-label="EMA200"]').waitFor();
+  }
   await page.setViewportSize({ width: 1024, height: 900 }); await noOverflow();
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/desktop-fixture.png', fullPage: true });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.screenshot({ path: 'test-results/mobile-fixture.png', fullPage: true });
   assert.deepEqual(errors, [], 'browser runtime errors');
-  console.log('PASS: mobile 360/375px and desktop layout, official market filters, EMA50/200 curves and 2x stroke, insufficient/failed EMA history, automatic two-direction search, long/short filters and short chart labels, candle controls, settings persistence, refresh, partial results. Synthetic fixtures only.');
+  console.log('PASS: mobile 360/375px and desktop layout, official market filters, EMA50/200 curves and 2x stroke, shared inline/detail EMA history, automatic two-direction search, long/short filters and short chart labels, candle controls, settings persistence, refresh, partial results. Synthetic fixtures only.');
 
   // A separate page performs an unmocked browser request to inspect actual Bybit/CORS access.
   const live = await browser.newContext({ viewport: { width: 375, height: 812 } });

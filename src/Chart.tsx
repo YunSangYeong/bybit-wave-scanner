@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatTime, money, price } from './format';
 import { ema } from './indicators';
 import { INTERVAL, type Candle, type Wave } from './types';
 
 export function Chart({ wave, emaHistory }: { wave: Wave; emaHistory: Candle[] | null }) {
+  const scroll = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (scroll.current) scroll.current.scrollLeft = scroll.current.scrollWidth; }, [wave.id]);
   const isLong = wave.direction === 'long';
   const bars = wave.candles;
   const averages = useMemo(() => {
@@ -35,7 +37,7 @@ export function Chart({ wave, emaHistory }: { wave: Wave; emaHistory: Candle[] |
   };
   return <div className="chart-block">
     <div className="chart-legend"><span className="legend-start">{isLong ? '시작 저점' : '시작 고점'}</span><span className="legend-signal">1파 확정</span><span className="legend-peak">{isLong ? '최고점' : '최저점'}</span><span className="legend-correction">조정 구간</span><span className="legend-ema50">EMA50</span><span className="legend-ema200">EMA200</span></div>
-    <div className="chart-scroll" tabIndex={0} aria-label="15분봉 차트. 좌우로 스크롤할 수 있습니다.">
+    <div ref={scroll} className="chart-scroll" tabIndex={0} aria-label="15분봉 차트. 좌우로 스크롤할 수 있습니다.">
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: W }} role="img" aria-label={`${wave.symbol} 확정 15분봉 가격 및 USDT 거래대금 차트`}
         onPointerDown={event => {
           const box = event.currentTarget.getBoundingClientRect();
